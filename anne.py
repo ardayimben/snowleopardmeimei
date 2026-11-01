@@ -19,7 +19,7 @@ sucuk = pizza.winfo_screenwidth()
 elma = pizza.winfo_screenheight()
 
 muz = r"C:\Users\user\Downloads\Pew Pew Pew.mp3"
-kedi = r"C:\Users\user\Downloads\4624ea3b60d5d3b628619261f38ea5fb.webp"
+kedi = r"C:\Users\user\Downloads\meimei.webp"
 cay = [3.6, 5.5, 7.5, 9.0, 11.0]
 simit = 0.0
 
@@ -100,7 +100,7 @@ class Kavun:
         self.bir = oyun
         self.iki, uc, self.dort = oyun.mixer.get_init()
         if uc != -16:
-            raise RuntimeError("Desteklenmeyen ses formatı (16-bit bekleniyordu).")
+            raise RuntimeError("Unsupported audio format (16-bit expected).")
         self.bes = 2 * self.dort
 
         self.alti = ses.get_raw()
@@ -190,7 +190,7 @@ class Kavun:
         self.silgi += 1
         self.okul = time.perf_counter() + sogan
         self.gomlek()
-        print(f"Şarkı hızı: {self.kitap:.2f}x")
+        print(f"Song speed: {self.kitap:.2f}x")
 
 
 class Karpuz:
@@ -375,7 +375,7 @@ class Kiraz:
 
 
 def fincan(yazi):
-    messagebox.showerror("Hata", yazi, parent=pizza)
+    messagebox.showerror("Error", yazi, parent=pizza)
     pizza.destroy()
     sys.exit(1)
 
@@ -397,24 +397,24 @@ def semaver():
     global kasik, masa, sandalye, kapi, perde, hali, limon, portakal
 
     if not os.path.isfile(muz):
-        fincan(f"Ses dosyası bulunamadı:\n{muz}\n\n"
-               "Dosyanın yolunu kodun başındaki muz değişkenine yaz.")
+        fincan(f"Audio file not found:\n{muz}\n\n"
+               "Update the path in the 'muz' variable at the top of the code.")
 
     if not os.path.isfile(kedi):
-        fincan(f"Fotoğraf bulunamadı:\n{kedi}\n\n"
-               "Dosyanın yolunu kodun başındaki kedi değişkenine yaz.")
+        fincan(f"Image file not found:\n{kedi}\n\n"
+               "Update the path in the 'kedi' variable at the top of the code.")
 
     if gorsel is None:
-        fincan("Pillow yüklü değil.\n\nKomut satırına şunu yaz:\n"
+        fincan("Pillow is not installed.\n\nRun this in your command line:\n"
                "pip install pillow")
 
     try:
         import pygame
     except ImportError:
-        fincan("pygame yüklü değil.\n\nKomut satırına şunu yaz:\n"
+        fincan("pygame is not installed.\n\nRun this in your command line:\n"
                "pip install pygame")
 
-    print("Dosyalar yükleniyor...")
+    print("Loading files...")
 
     try:
         corba = getattr(gorsel, "Resampling", gorsel)
@@ -430,7 +430,7 @@ def semaver():
         hali = gorseltk.PhotoImage(perde)
         kapi = elma - sandalye - 80
     except Exception as hata:
-        fincan(f"Fotoğraf yüklenemedi:\n{hata}")
+        fincan(f"Failed to load image:\n{hata}")
 
     try:
         pygame.mixer.pre_init(44100, -16, 2, 512)
@@ -438,8 +438,8 @@ def semaver():
         ses = pygame.mixer.Sound(muz)
         kasik = Kavun(pygame, ses)
     except Exception as hata:
-        fincan(f"Ses yüklenemedi:\n{hata}")
-    print(f"Fotoğraf ({masa}x{sandalye}) ve ses ({ses.get_length():.1f} sn) yüklendi. Başlıyor!")
+        fincan(f"Failed to load audio:\n{hata}")
+    print(f"Image ({masa}x{sandalye}) and audio ({ses.get_length():.1f} sec) loaded. Starting!")
 
     kasik.pantolon()
     pizza.after(int(kebap * 1000), kumar)
@@ -453,7 +453,7 @@ def semaver():
             kasik.sapka()
             siradaki = 0
             tabak = len(cay)
-            print("Şarkı bitti, hız sıfırlandı, baştan başlıyor!")
+            print("Song finished, speed reset, restarting from the beginning!")
         zaman = kasik.kalem + simit
         while siradaki < len(cay) and zaman >= cay[siradaki]:
             cezve(siradaki)
