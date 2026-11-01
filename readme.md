@@ -21,8 +21,8 @@ The app manages floating desktop windows using Tkinter, handles realtime image s
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/mei-mei-desktop.git
-   cd mei-mei-desktop
+   git clone https://github.com/ardayimben/snowleopardmeimei.git
+   cd snowleopardmeimei
    ```
 
 2. Install dependencies:
