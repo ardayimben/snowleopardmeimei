@@ -46,7 +46,7 @@ ceviz = 0.8
 fistik = 140
 
 kebap = 10
-lahmacun = 0.5
+lahmacun = 0.2
 
 masa, sandalye = 340, 200
 kapi = elma - sandalye - 80
