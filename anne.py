@@ -1,467 +1,525 @@
-import os
+import ctypes
+import math
+import random
 import sys
 import time
-import random
 import tkinter as tk
-from array import array
-from fractions import Fraction
+from pathlib import Path
 from tkinter import messagebox
 
 try:
-    from PIL import Image as gorsel, ImageTk as gorseltk
+    import numpy as np
 except ImportError:
-    gorsel = gorseltk = None
+    np = None
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = ImageTk = None
 
-pizza = tk.Tk()
-pizza.withdraw()
-
-sucuk = pizza.winfo_screenwidth()
-elma = pizza.winfo_screenheight()
-
-muz = r"C:\Users\user\Downloads\Pew Pew Pew.mp3"
-kedi = r"C:\Users\user\Downloads\meimei.webp"
-cay = [3.6, 5.5, 7.5, 9.0, 11.0]
-simit = 0.0
-
-ekmek = 340
-peynir = 0.35
-zeytin = 16
-
-domates = 0.1
-biber = 3.0
-patates = False
-sogan = 2.5
-
-balik = 0.45
-kus, at = 15, 19
-
-araba = 150
-bisiklet = 70
-ucak = 30
-
-kopek, kurt = 17, 21
-ordek, tavuk = 11, 16
-inek, koyun = 1.5, 3.0
-ceviz = 0.8
-fistik = 140
-
-kebap = 10
-lahmacun = 0.2
-
-masa, sandalye = 340, 200
-kapi = elma - sandalye - 80
-perde = None
-hali = None
-limon = None
-portakal = None
-
-bardak = 0
-tabak = len(cay)
-kasik = None
-sepet = []
+BASE_DIR = Path(__file__).resolve().parent
 
 
-def catal(fark):
-    global bardak
-    bardak += fark
-    if bardak <= 0 and tabak <= 0:
-        pizza.after(300, lambda: pizza.destroy()
-                    if bardak <= 0 and tabak <= 0 else None)
+def find_file(name, pattern):
+    for folder in (BASE_DIR, Path.home() / "Downloads"):
+        candidate = folder / name
+        if candidate.is_file():
+            return candidate
+    found = sorted(BASE_DIR.glob(pattern))
+    if found:
+        return found[0]
+    return BASE_DIR / name
 
 
-def bicak():
-    if kasik is not None:
-        kasik.eldiven()
+MUSIC_PATH = find_file("Pew Pew Pew.mp3", "*.mp3")
+IMAGE_PATH = find_file("meimei.webp", "*.webp")
+
+SPAWN_TIMES = [3.6, 5.5, 7.5, 9.0, 11.0]
+START_OFFSET = 0.0
+
+IMAGE_WIDTH = 340
+MAX_HEIGHT_RATIO = 0.35
+TASKBAR_MARGIN = 80
+
+SPEED_STEP = 0.1
+SPEED_MAX = 3.0
+SPEED_DECAY_SECONDS = None
+
+GRAVITY = 0.45
+FRAME_MS = 16
+POLL_MS = 8
+MAX_CATCHUP = 4
+
+RESTITUTION_LOW = 0.94
+INTRO_MIN_BOUNCE = 15
+HALF_MIN_BOUNCE = 11
+
+DRIFT_MIN = 1.2
+DRIFT_MAX = 4.5
+
+SQUASH_FRAMES = 10
+SQUASH_MIN_DEPTH = 0.20
+SQUASH_MAX_DEPTH = 0.55
+SQUASH_SPEED_DIV = 50
+LAUNCH_FRAMES = 10
+LAUNCH_STRETCH = 0.18
+SCALE_STEPS = 50
+
+CLONE_INTERVAL = 10
+CLONE_CHANCE = 0.2
+MAX_WINDOWS = 30
+
+SPLIT_WIDTH_RATIO = 0.8
+SPLIT_MIN_WIDTH = 140
+STRETCH_FRAMES = 70
+SHAKE_FRAMES = 30
+STRETCH_PX = 150
+
+if sys.platform == "win32":
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        pass
 
 
-def tencere(kirmizi, mavi, yesil, sari):
-    kova = tk.Toplevel(pizza)
-    kova.title(" ")
-    kova.attributes("-topmost", True)
-    kova.configure(bg="black")
-    kova.geometry(f"{kirmizi}x{mavi}{yesil:+d}{sari:+d}")
-    kova.bind("<Escape>", lambda e: pizza.destroy())
-    return kova
-
-
-def tava(kutu, cerceve):
-    salata = tk.Label(kutu, image=cerceve, bd=0, highlightthickness=0,
-                      padx=0, pady=0, bg="black")
-    salata.pack(fill="both", expand=True)
-    return salata
-
-
-def kazan(t):
+def ease_out(t):
     return 1 - (1 - t) ** 3
 
 
-class Kavun:
-    def __init__(self, oyun, ses):
-        self.bir = oyun
-        self.iki, uc, self.dort = oyun.mixer.get_init()
-        if uc != -16:
-            raise RuntimeError("Unsupported audio format (16-bit expected).")
-        self.bes = 2 * self.dort
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
-        self.alti = ses.get_raw()
-        self.yedi = len(self.alti) / (self.iki * self.bes)
-        sekiz = array("h")
-        sekiz.frombytes(self.alti)
-        dokuz = len(sekiz) // self.dort
-        sekiz = sekiz[:dokuz * self.dort]
-        self.on = [sekiz[c::self.dort] for c in range(self.dort)]
 
-        self.kalem = 0.0
-        self.silgi = 0
-        self.defter = Fraction(1)
-        self.kitap = 1.0
-        self.canta = time.perf_counter()
-        self.okul = 0.0
-        self.sinif = None
-        self.tahta = None
+class SpeedPlayer:
+    def __init__(self, mixer, sound):
+        self.mixer = mixer
+        self.rate, fmt, self.channels = mixer.get_init()
+        if fmt != -16:
+            raise RuntimeError("Only 16-bit audio is supported.")
+        raw = np.frombuffer(sound.get_raw(), dtype=np.int16)
+        raw = raw[: len(raw) // self.channels * self.channels]
+        self.samples = raw.reshape(-1, self.channels)
+        self.total = len(self.samples)
+        self.duration = self.total / self.rate
+        self.hits = 0
+        self.speed = 1.0
+        self.position = 0.0
+        self.decay_at = 0.0
+        self.last = time.perf_counter()
+        self.channel = None
+        self.sound = None
 
-    def ayakkabi(self, nane):
-        hamur, un = self.defter.numerator, self.defter.denominator
-        yumurta = [c[nane:] for c in self.on]
-        su = len(yumurta[0])
-        tuz = (su * un) // hamur
-        if tuz < 100:
-            return b""
-        seker = array("h", bytes(2 * tuz * self.dort))
-        for sut, bal in enumerate(yumurta):
-            yag = array("h", bytes(2 * tuz))
-            for tereyag in range(un):
-                recel = len(range(tereyag, tuz, un))
-                yag[tereyag::un] = bal[(tereyag * hamur) // un::hamur][:recel]
-            seker[sut::self.dort] = yag
-        return seker.tobytes()
-
-    def corap(self):
-        if self.sinif is not None:
-            self.sinif.stop()
-        nane = int(self.kalem * self.iki)
-        if self.defter == 1:
-            limonata = self.alti[nane * self.bes:]
+    def _play(self):
+        if self.channel is not None:
+            self.channel.stop()
+        start = int(self.position * self.rate)
+        if self.total - start < 100:
+            self.channel = None
+            return
+        if self.speed == 1.0:
+            chunk = self.samples[start:]
         else:
-            limonata = self.ayakkabi(nane)
-        if len(limonata) < self.bes * 100:
-            self.sinif = None
+            n = int((self.total - start) / self.speed)
+            pos = start + np.arange(n, dtype=np.float64) * self.speed
+            i0 = pos.astype(np.int64)
+            frac = (pos - i0).astype(np.float32)[:, None]
+            i1 = np.minimum(i0 + 1, self.total - 1)
+            chunk = (self.samples[i0] * (1 - frac) + self.samples[i1] * frac)
+            chunk = chunk.astype(np.int16)
+        self.sound = self.mixer.Sound(buffer=np.ascontiguousarray(chunk).tobytes())
+        self.channel = self.sound.play()
+        self.last = time.perf_counter()
+
+    def _set_speed(self):
+        new = min(1.0 + self.hits * SPEED_STEP, SPEED_MAX)
+        if abs(new - self.speed) < 1e-6:
             return
-        self.tahta = self.bir.mixer.Sound(buffer=limonata)
-        self.sinif = self.tahta.play()
+        self.speed = new
+        self._play()
 
-    def gomlek(self):
-        kola = min(1.0 + self.silgi * domates, biber)
-        soda = Fraction(kola).limit_denominator(20)
-        if soda == self.defter:
+    def start(self):
+        self.position = 0.0
+        self._play()
+
+    def update(self):
+        now = time.perf_counter()
+        self.position += (now - self.last) * self.speed
+        self.last = now
+        if SPEED_DECAY_SECONDS and self.hits > 0 and now >= self.decay_at:
+            self.hits = 0
+            self._set_speed()
+
+    def hit(self):
+        self.update()
+        self.hits += 1
+        self.decay_at = time.perf_counter() + (SPEED_DECAY_SECONDS or 0)
+        self._set_speed()
+        print(f"Song speed: {self.speed:.2f}x")
+
+    def finished(self):
+        return self.position >= self.duration
+
+    def restart(self):
+        self.hits = 0
+        self.speed = 1.0
+        self.start()
+
+    def stop(self):
+        if self.channel is not None:
+            self.channel.stop()
+
+
+class Sprite:
+    def __init__(self, image, resample):
+        self.image = image
+        self.resample = resample
+        self.w, self.h = image.size
+        self.cache = {}
+
+    def photo(self, w, h, cache=True):
+        key = (w, h)
+        photo = self.cache.get(key)
+        if photo is None:
+            img = self.image if key == (self.w, self.h) \
+                else self.image.resize(key, self.resample)
+            photo = ImageTk.PhotoImage(img)
+            if cache:
+                self.cache[key] = photo
+        return photo
+
+
+class FloatWindow:
+    can_clone = False
+    cache_frames = True
+
+    def __init__(self, app, sprite, x, y):
+        self.app = app
+        self.sprite = sprite
+        self.w, self.h = sprite.w, sprite.h
+        self.x, self.y = float(x), float(y)
+        self.alive = True
+        self.floor = app.screen_h - self.h - TASKBAR_MARGIN
+        self.max_bounce = math.sqrt(2 * GRAVITY * max(self.floor, 1)) * 0.95
+
+        self.sx = self.sy = 1.0
+        self.phase, self.phase_t = "air", 0
+        self.vy = self.next_vy = self.depth = 0.0
+        self.launch_amp = LAUNCH_STRETCH
+        self.dir = random.choice((-1, 1))
+        self.vx = random.uniform(1.5, 3.0)
+        self.drifting = False
+        self.shown = (self.w, self.h)
+        self.last_geo = None
+
+        self.top = tk.Toplevel(app.root)
+        self.top.title(" ")
+        self.top.attributes("-topmost", True)
+        self.top.configure(bg="black")
+        self.top.bind("<Escape>", lambda e: app.quit())
+        self.top.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.photo = sprite.photo(self.w, self.h)
+        self.label = tk.Label(self.top, image=self.photo, bd=0,
+                              highlightthickness=0, bg="black")
+        self.label.pack(fill="both", expand=True)
+        app.windows.add(self)
+        self.render()
+
+    def size(self):
+        qx = round(self.sx * SCALE_STEPS) / SCALE_STEPS
+        qy = round(self.sy * SCALE_STEPS) / SCALE_STEPS
+        return max(1, int(self.w * qx)), max(1, int(self.h * qy))
+
+    def pos(self, w, h):
+        return self.x + (self.w - w) / 2, self.y + self.h - h
+
+    def render(self):
+        if not self.alive:
             return
-        self.defter = soda
-        self.kitap = float(soda)
-        self.corap()
-        self.canta = time.perf_counter()
+        w, h = self.size()
+        if (w, h) != self.shown:
+            self.photo = self.sprite.photo(w, h, cache=self.cache_frames)
+            self.label.config(image=self.photo)
+            self.shown = (w, h)
+        x, y = self.pos(w, h)
+        geo = (w, h, int(x), int(y))
+        if geo != self.last_geo:
+            self.last_geo = geo
+            self.top.geometry(f"{w}x{h}{geo[2]:+d}{geo[3]:+d}")
 
-    def pantolon(self):
-        self.kalem = 0.0
-        self.corap()
-        self.canta = time.perf_counter()
+    def step(self):
+        pass
 
-    def ceket(self):
-        return self.kalem >= self.yedi
+    def ballistic(self):
+        self.vy += GRAVITY
+        self.y += self.vy
+        if self.y < 0:
+            self.y, self.vy = 0, abs(self.vy) * 0.5
 
-    def sapka(self):
-        self.silgi = 0
-        self.defter = Fraction(1)
-        self.kitap = 1.0
-        self.okul = 0.0
-        self.kalem = 0.0
-        self.corap()
-        self.canta = time.perf_counter()
+    def drift_x(self):
+        self.x += self.dir * self.vx
+        if self.x < 0:
+            self.x, self.dir = 0, 1
+        elif self.x + self.w > self.app.screen_w:
+            self.x, self.dir = self.app.screen_w - self.w, -1
 
-    def atki(self):
-        ayran = time.perf_counter()
-        self.kalem += (ayran - self.canta) * self.kitap
-        self.canta = ayran
-        if patates and self.silgi > 0 and ayran >= self.okul:
-            self.silgi = 0
-            self.gomlek()
+    def land(self, impact_vy, min_bounce):
+        rebound = impact_vy * random.uniform(RESTITUTION_LOW, 1.0)
+        rebound = clamp(rebound, min_bounce, self.max_bounce)
+        self.y = self.floor
+        self.vy = 0.0
+        self.next_vy = -rebound
+        self.depth = clamp(impact_vy / SQUASH_SPEED_DIV,
+                           SQUASH_MIN_DEPTH, SQUASH_MAX_DEPTH)
+        self.launch_amp = LAUNCH_STRETCH * min(1.6, rebound / 16)
+        self.phase, self.phase_t = "squash", 0
+        self.drifting = True
+        self.vx = clamp(self.vx + random.uniform(-0.6, 0.9), DRIFT_MIN, DRIFT_MAX)
+        if random.random() < 0.2:
+            self.dir = -self.dir
 
-    def eldiven(self):
-        self.atki()
-        self.silgi += 1
-        self.okul = time.perf_counter() + sogan
-        self.gomlek()
-        print(f"Song speed: {self.kitap:.2f}x")
+    def bounce_phase(self):
+        if self.phase == "squash":
+            self.phase_t += 1
+            t = self.phase_t / SQUASH_FRAMES
+            if t < 1:
+                sy = 1 - self.depth * math.sin(math.pi * t / 2)
+                self.sx, self.sy = 1 / math.sqrt(sy), sy
+                return True
+            self.phase, self.phase_t = "launch", 0
+            self.vy = self.next_vy
+        if self.phase == "launch":
+            self.phase_t += 1
+            k = 1 - self.phase_t / LAUNCH_FRAMES
+            if k > 0:
+                sy = 1 + self.launch_amp * k
+                self.sx, self.sy = 1 / math.sqrt(sy), sy
+            else:
+                self.phase = "air"
+                self.sx = self.sy = 1.0
+        return False
 
-
-class Karpuz:
-    def __init__(self, sira):
-        self.canli = True
-        self.tavsan = random.randint(0, max(0, sucuk - masa))
-        self.aslan = random.randint(0, max(1, kapi // 2))
-        self.fil = 0.0
-        self.zebra = sucuk / 2 - masa / 2 + (sira - 2) * (masa + 10)
-        self.zebra = max(0, min(self.zebra, sucuk - masa))
-        self.kaplan = random.uniform(0.6, 1.2)
-
-        self.ayi = tencere(masa, sandalye, int(self.tavsan), int(self.aslan))
-        self.panda = tava(self.ayi, hali)
-        sepet.append(self)
-        self.ayi.protocol("WM_DELETE_WINDOW", self.maymun)
-        catal(+1)
-        self.yilan()
-
-    def yilan(self):
-        if not self.canli:
+    def destroy(self):
+        if not self.alive:
             return
-        self.fil += balik
-        self.aslan += self.fil
-        if self.aslan >= kapi:
-            self.aslan = kapi
-            self.fil = -random.uniform(kus, at)
+        self.alive = False
+        self.app.windows.discard(self)
+        self.top.destroy()
+        self.app.check_done()
 
-        if abs(self.tavsan - self.zebra) > self.kaplan:
-            self.tavsan += self.kaplan if self.tavsan < self.zebra else -self.kaplan
+    def on_close(self):
+        Stretch(self.app, self.sprite, self.x, self.y)
+        self.destroy()
 
-        self.ayi.geometry(f"{masa}x{sandalye}{int(self.tavsan):+d}{int(self.aslan):+d}")
-        self.ayi.after(zeytin, self.yilan)
-
-    def maymun(self):
-        self.canli = False
-        if self in sepet:
-            sepet.remove(self)
-        cx, cy = int(self.tavsan), int(self.aslan)
-        self.ayi.destroy()
-        Armut(perde, cx, cy)
-        catal(-1)
-
-    def cogal(self):
-        Kiraz(perde, int(self.tavsan), int(self.aslan),
-              yon=random.choice((-1, 1)))
+    def clone(self):
+        Half(self.app, self.sprite, self.x, self.y, random.choice((-1, 1)))
 
 
-class Armut:
-    def __init__(self, bulut, eylul, ekim):
-        self.bulut = bulut
-        self.yildiz, self.gunes = bulut.size
-        self.ay = araba * self.yildiz / masa
-        self.dag = elma - self.gunes - 80
-        self.deniz = eylul
-        self.aslan = max(0, min(ekim, self.dag))
-        self.nehir = 0
-        self.gol = False
-        self.orman, self.col = eylul, eylul + self.yildiz
-        self.tepe = bulut
+class Intro(FloatWindow):
+    can_clone = True
 
-        self.ayi = tencere(self.yildiz, self.gunes, eylul, self.aslan)
-        self.vadi = gorseltk.PhotoImage(self.tepe)
-        self.panda = tava(self.ayi, self.vadi)
-        self.ayi.protocol("WM_DELETE_WINDOW", self.sonuc)
-        catal(+1)
-        self.yilan()
+    def __init__(self, app, index):
+        sprite = app.base_sprite
+        super().__init__(app, sprite,
+                         random.randint(0, max(0, app.screen_w - sprite.w)),
+                         random.randint(0, max(1, app.screen_h // 4)))
+        target = app.screen_w / 2 - sprite.w / 2 + (index - 2) * (sprite.w + 10)
+        self.target_x = clamp(target, 0, app.screen_w - sprite.w)
+        self.glide = random.uniform(0.6, 1.2)
 
-    def yilan(self):
-        if self.gol:
+    def step(self):
+        if self.bounce_phase():
             return
-        self.nehir += 1
+        self.ballistic()
+        if self.drifting:
+            self.drift_x()
+        elif abs(self.x - self.target_x) > self.glide:
+            self.x += self.glide if self.x < self.target_x else -self.glide
+        if self.y >= self.floor:
+            self.land(self.vy, INTRO_MIN_BOUNCE)
 
-        if self.nehir <= bisiklet:
-            saat = self.nehir / bisiklet
-            yagmur = self.ay * kazan(saat)
-            self.orman = max(0, int(self.deniz - yagmur))
-            self.col = min(sucuk, int(self.deniz + self.yildiz + yagmur))
-            kar = self.col - self.orman
-            self.tepe = self.bulut.resize((kar, self.gunes), limon)
-            self.vadi = gorseltk.PhotoImage(self.tepe)
-            self.panda.config(image=self.vadi)
-            self.ayi.geometry(f"{kar}x{self.gunes}{self.orman:+d}{self.aslan:+d}")
+
+class Half(FloatWindow):
+    can_clone = True
+
+    def __init__(self, app, sprite, x, y, direction):
+        super().__init__(app, sprite, x, y)
+        self.dir = direction
+        self.vx = random.uniform(1.5, 3.0)
+        self.vy = -random.uniform(17, 21)
+        self.drifting = True
+
+    def step(self):
+        if self.bounce_phase():
+            return
+        self.ballistic()
+        self.drift_x()
+        if self.y >= self.floor:
+            self.land(self.vy, HALF_MIN_BOUNCE)
+
+
+class Stretch(FloatWindow):
+    cache_frames = False
+
+    def __init__(self, app, sprite, x, y):
+        self.cur_w = sprite.w
+        self.cx0 = int(x)
+        self.cur_x = float(x)
+        self.cur_y = float(y)
+        self.frame = 0
+        super().__init__(app, sprite, x, y)
+        self.y = clamp(self.y, 0, self.floor)
+        self.cur_y = self.y
+        self.render()
+
+    def size(self):
+        return self.cur_w, self.h
+
+    def pos(self, w, h):
+        return self.cur_x, self.cur_y
+
+    def on_close(self):
+        self.destroy()
+
+    def step(self):
+        self.frame += 1
+        if self.frame <= STRETCH_FRAMES:
+            grow = STRETCH_PX * self.w / IMAGE_WIDTH * ease_out(self.frame / STRETCH_FRAMES)
+            self.cx0 = max(0, int(self.x - grow))
+            cx1 = min(self.app.screen_w, int(self.x + self.w + grow))
+            self.cur_w = max(self.w, (cx1 - self.cx0) // 4 * 4)
+            self.cur_x = float(self.cx0)
         else:
-            ruzgar = self.nehir - bisiklet
-            if ruzgar > ucak:
-                self.makas()
+            k = self.frame - STRETCH_FRAMES
+            if k > SHAKE_FRAMES:
+                self.split()
                 return
-            firtina = 1 + 5 * ruzgar / ucak
-            sis = int(random.uniform(-firtina, firtina))
-            dolu = int(random.uniform(-firtina, firtina))
-            self.ayi.geometry(
-                f"{self.col - self.orman}x{self.gunes}"
-                f"{self.orman + sis:+d}{max(0, self.aslan + dolu):+d}")
+            amp = 1 + 5 * k / SHAKE_FRAMES
+            self.cur_x = self.cx0 + random.uniform(-amp, amp)
+            self.cur_y = max(0, self.y + random.uniform(-amp, amp))
 
-        self.ayi.after(zeytin, self.yilan)
+    def split(self):
+        mid = self.cx0 + self.cur_w // 2
+        y = self.y
+        w = max(SPLIT_MIN_WIDTH, int(self.w * SPLIT_WIDTH_RATIO))
+        h = max(1, int(self.h * w / self.w))
+        half = Sprite(self.sprite.image.resize((w, h), self.app.good), self.app.fast)
+        Half(self.app, half, max(0, mid - w), y, -1)
+        Half(self.app, half, min(self.app.screen_w - w, mid), y, +1)
+        self.app.player.hit()
+        self.destroy()
 
-    def makas(self):
-        self.gol = True
-        ocak = (self.orman + self.col) // 2
-        subat = self.aslan
-        mart = max(fistik, int(self.yildiz * ceviz))
-        nisan = max(1, int(self.gunes * mart / self.yildiz))
-        self.ayi.destroy()
-        bicak()
-        mayis = self.bulut.resize((mart, nisan), portakal)
-        haziran = max(0, ocak - mart)
-        temmuz = min(sucuk - mart, ocak)
-        Kiraz(mayis, haziran, subat, yon=-1)
-        Kiraz(mayis, temmuz, subat, yon=+1)
-        catal(-1)
 
-    def sonuc(self):
-        if self.gol:
+class App:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.screen_w = self.root.winfo_screenwidth()
+        self.screen_h = self.root.winfo_screenheight()
+        self.windows = set()
+        self.next_spawn = 0
+        self.closing = False
+        self.quitting = False
+        self.load_assets()
+        self.player.start()
+        self.acc = 0.0
+        self.prev = time.perf_counter()
+        self.root.after(CLONE_INTERVAL * 1000, self.clone_tick)
+        self.loop()
+
+    def fail(self, msg):
+        messagebox.showerror("Error", msg, parent=self.root)
+        self.root.destroy()
+        sys.exit(1)
+
+    def load_assets(self):
+        if Image is None:
+            self.fail("Pillow is not installed.\n\npip install pillow")
+        if np is None:
+            self.fail("numpy is not installed.\n\npip install numpy")
+        try:
+            import pygame
+        except ImportError:
+            self.fail("pygame is not installed.\n\npip install pygame")
+        for path, name in ((MUSIC_PATH, "MUSIC_PATH"), (IMAGE_PATH, "IMAGE_PATH")):
+            if not path.is_file():
+                self.fail(f"File not found:\n{path}\n\nUpdate {name} at the top of the file.")
+
+        res = getattr(Image, "Resampling", Image)
+        self.fast, self.good = res.BILINEAR, res.LANCZOS
+        try:
+            img = Image.open(IMAGE_PATH).convert("RGB")
+            scale = IMAGE_WIDTH / img.width
+            if img.height * scale > self.screen_h * MAX_HEIGHT_RATIO:
+                scale = self.screen_h * MAX_HEIGHT_RATIO / img.height
+            img = img.resize((max(1, int(img.width * scale)),
+                              max(1, int(img.height * scale))), self.good)
+            self.base_sprite = Sprite(img, self.fast)
+        except Exception as e:
+            self.fail(f"Failed to load image:\n{e}")
+        try:
+            pygame.mixer.pre_init(44100, -16, 2, 512)
+            pygame.mixer.init()
+            sound = pygame.mixer.Sound(str(MUSIC_PATH))
+            self.player = SpeedPlayer(pygame.mixer, sound)
+        except Exception as e:
+            self.fail(f"Failed to load audio:\n{e}")
+        print(f"Image {img.size} and audio ({sound.get_length():.1f} s) loaded.")
+
+    def loop(self):
+        if self.quitting:
             return
-        self.gol = True
-        self.ayi.destroy()
-        catal(-1)
+        now = time.perf_counter()
+        self.acc += (now - self.prev) * 1000
+        self.prev = now
+        steps = int(self.acc // FRAME_MS)
+        self.acc -= steps * FRAME_MS
+        steps = min(steps, MAX_CATCHUP)
 
+        self.player.update()
+        if self.player.finished():
+            self.player.restart()
+            self.next_spawn = 0
+            print("Song finished, restarting!")
+        t = self.player.position + START_OFFSET
+        while self.next_spawn < len(SPAWN_TIMES) and t >= SPAWN_TIMES[self.next_spawn]:
+            Intro(self, self.next_spawn)
+            self.next_spawn += 1
 
-class Kiraz:
-    def __init__(self, tepe, eylul, ekim, yon):
-        self.tepe = tepe
-        self.arpa, self.bugday = tepe.size
-        self.dag = elma - self.bugday - 80
-        self.tavsan = float(eylul)
-        self.aslan = float(ekim)
-        self.yon = yon
-        self.kaplan = random.uniform(inek, koyun)
-        self.fil = -random.uniform(kopek, kurt)
-        self.gol = False
+        for _ in range(steps):
+            for w in list(self.windows):
+                if w.alive:
+                    w.step()
+        for w in list(self.windows):
+            w.render()
+        self.root.after(POLL_MS, self.loop)
 
-        self.ayi = tencere(self.arpa, self.bugday, int(self.tavsan), int(self.aslan))
-        self.vadi = gorseltk.PhotoImage(tepe)
-        self.panda = tava(self.ayi, self.vadi)
-        sepet.append(self)
-        self.ayi.protocol("WM_DELETE_WINDOW", self.maymun)
-        catal(+1)
-        self.yilan()
-
-    def yilan(self):
-        if self.gol:
+    def clone_tick(self):
+        if self.quitting:
             return
+        for w in list(self.windows):
+            n = len(self.windows)
+            if n >= MAX_WINDOWS:
+                break
+            if w.can_clone and random.random() < CLONE_CHANCE * (1 - n / MAX_WINDOWS):
+                w.clone()
+        self.root.after(CLONE_INTERVAL * 1000, self.clone_tick)
 
-        self.fil += balik
-        self.aslan += self.fil
-        self.tavsan += self.yon * self.kaplan
+    def check_done(self):
+        pending = len(SPAWN_TIMES) - self.next_spawn
+        if not self.windows and pending <= 0 and not self.closing:
+            self.closing = True
+            self.root.after(300, self.quit)
 
-        if self.aslan >= self.dag:
-            self.aslan = self.dag
-            self.fil = -random.uniform(ordek, tavuk)
-
-        if self.aslan < 0:
-            self.aslan = 0
-            self.fil = abs(self.fil) * 0.5
-
-        if self.tavsan < 0:
-            self.tavsan = 0
-            self.yon = 1
-        elif self.tavsan + self.arpa > sucuk:
-            self.tavsan = sucuk - self.arpa
-            self.yon = -1
-
-        self.ayi.geometry(f"{self.arpa}x{self.bugday}{int(self.tavsan):+d}{int(self.aslan):+d}")
-        self.ayi.after(zeytin, self.yilan)
-
-    def maymun(self):
-        if self.gol:
+    def quit(self):
+        if self.quitting:
             return
-        self.gol = True
-        if self in sepet:
-            sepet.remove(self)
-        ax, ay = int(self.tavsan), int(self.aslan)
-        tepe = self.tepe
-        self.ayi.destroy()
-        Armut(tepe, ax, ay)
-        catal(-1)
-
-    def cogal(self):
-        Kiraz(self.tepe, int(self.tavsan), int(self.aslan),
-              yon=random.choice((-1, 1)))
+        self.quitting = True
+        try:
+            self.player.stop()
+        except Exception:
+            pass
+        self.root.destroy()
 
 
-def fincan(yazi):
-    messagebox.showerror("Error", yazi, parent=pizza)
-    pizza.destroy()
-    sys.exit(1)
-
-
-def cezve(sira):
-    global tabak
-    tabak -= 1
-    Karpuz(sira)
-
-
-def kumar():
-    for kurban in list(sepet):
-        if random.random() < lahmacun:
-            kurban.cogal()
-    pizza.after(int(kebap * 1000), kumar)
-
-
-def semaver():
-    global kasik, masa, sandalye, kapi, perde, hali, limon, portakal
-
-    if not os.path.isfile(muz):
-        fincan(f"Audio file not found:\n{muz}\n\n"
-               "Update the path in the 'muz' variable at the top of the code.")
-
-    if not os.path.isfile(kedi):
-        fincan(f"Image file not found:\n{kedi}\n\n"
-               "Update the path in the 'kedi' variable at the top of the code.")
-
-    if gorsel is None:
-        fincan("Pillow is not installed.\n\nRun this in your command line:\n"
-               "pip install pillow")
-
-    try:
-        import pygame
-    except ImportError:
-        fincan("pygame is not installed.\n\nRun this in your command line:\n"
-               "pip install pygame")
-
-    print("Loading files...")
-
-    try:
-        corba = getattr(gorsel, "Resampling", gorsel)
-        limon = corba.BILINEAR
-        portakal = corba.LANCZOS
-        makarna = gorsel.open(kedi).convert("RGB")
-        pilav = ekmek / makarna.width
-        if makarna.height * pilav > elma * peynir:
-            pilav = elma * peynir / makarna.height
-        masa = max(1, int(makarna.width * pilav))
-        sandalye = max(1, int(makarna.height * pilav))
-        perde = makarna.resize((masa, sandalye), portakal)
-        hali = gorseltk.PhotoImage(perde)
-        kapi = elma - sandalye - 80
-    except Exception as hata:
-        fincan(f"Failed to load image:\n{hata}")
-
-    try:
-        pygame.mixer.pre_init(44100, -16, 2, 512)
-        pygame.mixer.init()
-        ses = pygame.mixer.Sound(muz)
-        kasik = Kavun(pygame, ses)
-    except Exception as hata:
-        fincan(f"Failed to load audio:\n{hata}")
-    print(f"Image ({masa}x{sandalye}) and audio ({ses.get_length():.1f} sec) loaded. Starting!")
-
-    kasik.pantolon()
-    pizza.after(int(kebap * 1000), kumar)
-    siradaki = 0
-
-    def dongu():
-        global tabak
-        nonlocal siradaki
-        kasik.atki()
-        if kasik.ceket():
-            kasik.sapka()
-            siradaki = 0
-            tabak = len(cay)
-            print("Song finished, speed reset, restarting from the beginning!")
-        zaman = kasik.kalem + simit
-        while siradaki < len(cay) and zaman >= cay[siradaki]:
-            cezve(siradaki)
-            siradaki += 1
-        pizza.after(5, dongu)
-
-    dongu()
-
-
-pizza.after(100, semaver)
-pizza.mainloop()
+if __name__ == "__main__":
+    app = App()
+    app.root.mainloop()
