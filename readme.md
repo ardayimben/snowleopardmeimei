@@ -1,131 +1,76 @@
-# Mei Mei Desktop Companion
+# Snow Leopard Meimei – Pew Pew Pew
 
-An interactive desktop application built in Python that creates dynamic screen animations and audio effects featuring Mei Mei the cat and her Snow Leopard form.
+A fun desktop toy made of little bouncing windows that move to the beat of a song. Close a window and it splits in two, the music speeds up, and the screen slowly fills with more and more windows.
 
-The app manages floating desktop windows using Tkinter, handles realtime image scaling with Pillow, and uses Pygame's lower-level audio buffer features to synchronize sound pitch and speed with window behavior.
+Project: https://github.com/ardayimben/snowleopardmeimei
 
-## Features
+## How it works
 
-* **Window Animations:** Spawns and bounces floating desktop windows containing custom images across the screen.
+1. When the program starts, the song begins playing.
+2. At specific moments in the song (`SPAWN_TIMES`), image windows drop onto the screen and bounce off the floor.
+3. If you close a window with the X button, it doesn't just disappear: it stretches sideways, shakes, and splits into two smaller windows.
+4. Every split makes the song a little faster (its pitch rises too).
+5. Windows also multiply on their own over time. There is an upper limit so your computer doesn't freeze (`MAX_WINDOWS`).
+6. When the song ends, it restarts and everything begins again.
 
-* **Visual Splitting:** Windows stretch, shake, and split into multiple smaller windows (representing Snow Leopard Mei Mei's multiplication).
+Windows squash when they hit the ground and stretch as they launch. The higher they fall from, the higher they bounce.
 
-* **Real-time Audio Processing:** Audio buffer manipulation dynamically adjusts song playback speed and pitch based on app events.
+## Installation
 
-* **Simple Controls:** Close active windows or press the Escape key on any open window to exit.
+Requires Python 3.8+.
 
-## Variable Name Glossary
+```bash
+git clone https://github.com/ardayimben/snowleopardmeimei.git
+cd snowleopardmeimei
+pip install pygame pillow numpy
+```
 
-Sorry for the confusing variable names! Here is a guide to what they actually do in `anne.py`:
+`tkinter` ships with Python. If it's missing on Linux, install it separately (`sudo apt install python3-tk`).
 
-### Configuration & Media
+## Files
 
-* `muz`: Path to the `.mp3` audio file.
+Put these two files in the **same folder** as `anne.py`:
 
-* `kedi`: Path to the Mei Mei image file (`.webp`, `.png`, etc.).
+| File | Purpose |
+|---|---|
+| `Pew Pew Pew.mp3` | The song |
+| `meimei.webp` | The image shown in the windows |
 
-* `cay`: Time stamps (in seconds) that trigger window spawning events.
+Different file names are fine too: the program first looks for these exact names, and if it can't find them, it uses any `.mp3` and `.webp` file in the same folder. It also checks your Downloads folder.
 
-* `simit`: Time offset used during audio timing calculations.
+## Running
 
-### Screen & Geometry Constants
+```bash
+python anne.py
+```
 
-* `pizza`: The hidden root Tkinter instance.
+**To quit**, press `ESC` in any window. You can also finish by closing all the windows one by one.
 
-* `sucuk` / `elma`: Screen width and height.
+## Settings
 
-* `ekmek`, `peynir`, `zeytin`: Base dimensions, screen scaling ratios, and animation refresh rates (ms).
+All settings are at the top of `anne.py`. Some of them:
 
-* `domates`, `biber`, `patates`, `sogan`: Speed adjustment steps, maximum speed cap, reset flags, and speed duration timeouts.
+| Setting | Description |
+|---|---|
+| `SPAWN_TIMES` | At which seconds of the song windows appear |
+| `IMAGE_WIDTH` | Window width (px) |
+| `SPEED_STEP` / `SPEED_MAX` | Speed increase per split and the upper limit |
+| `SPEED_DECAY_SECONDS` | If set, speed resets after this many seconds (`None` = off) |
+| `GRAVITY` | Gravity strength |
+| `CLONE_INTERVAL` / `CLONE_CHANCE` | How often and how likely windows multiply on their own |
+| `MAX_WINDOWS` | Maximum number of windows at once |
+| `STRETCH_PX` | How far a window stretches before splitting |
 
-* `araba`, `bisiklet`, `ucak`: Animation thresholds for window stretching, shaking, and splitting transitions.
+## Troubleshooting
 
-* `balik`, `kus`, `at`: Gravity constant, bounce upward force minimum, and bounce upward force maximum.
+- **"X is not installed" error:** Install the missing package with `pip install`.
+- **"File not found" error:** Make sure the `.mp3` and `.webp` files are in the same folder as `anne.py`.
+- **Audio not supported error:** Only 16-bit audio output is supported.
+- **Computer slows down:** Lower `MAX_WINDOWS`.
 
-* `kopek`, `kurt`, `ordek`, `tavuk`: Horizontal and vertical bounce physics parameters for split windows.
+## Built with
 
-* `inek`, `koyun`, `ceviz`, `fistik`: Horizontal drift ranges, image scaling minimums, and resize constraints.
-
-* `kebap`, `lahmacun`: Timer interval for window multiplication checks and probability rate for window duplication.
-
-* `masa`, `sandalye`, `kapi`: Base window width, base window height, and floor collision boundary on screen.
-
-* `perde`, `hali`, `limon`, `portakal`: Resized PIL Image instance, PhotoImage object, and resampling filters.
-
-* `bardak`, `tabak`, `kasik`, `sepet`: Active window counter, remaining spawn queue count, `Kavun` (audio controller) instance, and list of active window objects.
-
-### Classes & Functions
-
-* `catal()`: Increments/decrements active window counts and terminates the main app when all windows are closed.
-
-* `bicak()`: Triggers audio speed acceleration when a window splits.
-
-* `tencere()`: Helper function to create top-level Tkinter windows (`Toplevel`).
-
-* `tava()`: Helper function to create image labels inside windows.
-
-* `kazan()`: Cubic easing out calculation for window animation transitions.
-
-* `Kavun`: Class handling audio buffering, pitch/speed manipulation, and Pygame sound playback.
-
-* `Karpuz`: Main bouncing window class (Mei Mei).
-
-* `Armut`: Stretching/shaking transition window class.
-
-* `Kiraz`: Split sub-window class (Snow Leopard Mei Mei units).
-
-* `fincan()`: Utility function displaying error message dialogs.
-
-* `cezve()`: Spawns a new main window from the spawn queue.
-
-* `kumar()`: Periodic function that handles random window duplication.
-
-* `semaver()`: Main setup function initializing media resources, audio buffers, and main event loops.
-
-## Prerequisites
-
-* Python 3.8 or higher
-
-* Pillow
-
-* pygame
-
-## Setup and Running
-
-1. Clone this repository:
-
-   ```
-   git clone https://github.com/ardayimben/snowleopardmeimei.git
-   cd snowleopardmeimei
-   
-   ```
-
-2. Install dependencies:
-
-   ```
-   pip install -r requirements.txt
-   
-   ```
-
-3. Update the media file paths near the top of `anne.py` to point to your local assets:
-
-   ```
-   muz = r"C:\path\to\your\audio.mp3"
-   kedi = r"C:\path\to\meimei_image.webp"
-   
-   ```
-
-4. Run the application:
-
-   ```
-   python anne.py
-   
-   ```
-
-## Built With
-
-* **Standard Library:** `tkinter`, `array`, `fractions`, `time`, `random`, `os`, `sys`
-
-* **Pillow (PIL):** Image loading, resizing, and Tkinter canvas rendering
-
-* **Pygame:** Raw audio buffer manipulation and sound playback
+- [pygame](https://www.pygame.org/) – audio
+- [Pillow](https://python-pillow.org/) – image processing
+- [NumPy](https://numpy.org/) – speeding up the song (resampling)
+- `tkinter` – windows
